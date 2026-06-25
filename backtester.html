@@ -107,7 +107,7 @@ input[type=range]{flex:1;accent-color:var(--neon)}
 .setbar .pd{color:var(--ink);font-weight:700}
 #chartWrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;margin-bottom:10px}
 #chartWrap .clab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px}
-canvas{width:100%;height:90px;display:block}
+canvas{width:100%;height:150px;display:block}
 
 .tg{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 10px 50px rgba(0,0,0,.6)}
 .tg-hd{display:flex;align-items:center;gap:11px;padding:12px 14px;background:var(--panel2);border-bottom:1px solid var(--line)}
@@ -262,8 +262,8 @@ button.cb.ghost{background:transparent;color:var(--muted)}
     <div class="setbar" id="setBar"></div>
 
     <div id="chartWrap">
-      <div class="clab"><span>총자산 곡선</span><span id="progLbl">0%</span></div>
-      <canvas id="chart" width="900" height="180"></canvas>
+      <div class="clab"><span>총자산 곡선 · 가로 날짜 / 세로 USD</span><span id="progLbl">0%</span></div>
+      <canvas id="chart" height="150"></canvas>
     </div>
 
     <div class="tg">
@@ -1688,23 +1688,39 @@ function updTicker(){
   $('abNow').textContent=Math.round(tot).toLocaleString()+' USD';
   const ar=$('abRet'); ar.textContent=(ret>=0?'총수익률 +':'총수익률 ')+ret.toFixed(1)+'%'; ar.className='ab-ret '+(ret>=0?'up':'dn');
 }
+function usdShort(v){const a=Math.abs(v);if(a>=1e6)return(v/1e6).toFixed(1)+'M';if(a>=1e3)return(v/1e3).toFixed(a>=1e4?0:1)+'k';return Math.round(v)+'';}
+function dateShort(n){const s=''+n;return s.slice(2,4)+'.'+s.slice(4,6);}
 function drawChart(){
-  const cv=$('chart'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
-  ctx.clearRect(0,0,W,H);
+  const cv=$('chart'),ctx=cv.getContext('2d');
+  const W=Math.max(300, cv.clientWidth||cv.offsetWidth||360), H=150;
+  cv.width=W; cv.height=H; ctx.clearRect(0,0,W,H);
   const cur=S.curve; if(cur.length<2)return;
+  const mL=58,mR=12,mT=10,mB=22, pw=W-mL-mR, ph=H-mT-mB;
   let mn=Infinity,mx=-Infinity; for(const p of cur){if(p[1]<mn)mn=p[1];if(p[1]>mx)mx=p[1];}
   if(mx-mn<1e-6)mx=mn+1;
-  const x=i=>i/(cur.length-1)*W, y=v=>H-8-(v-mn)/(mx-mn)*(H-16);
-  // baseline (초기자본)
+  const pad=(mx-mn)*0.08; mn=Math.max(0,mn-pad); mx+=pad;
+  const x=i=>mL+i/(cur.length-1)*pw, y=v=>mT+ph-(v-mn)/(mx-mn)*ph;
   const cap=C().cap;
-  ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
-  ctx.beginPath();ctx.moveTo(0,y(cap));ctx.lineTo(W,y(cap));ctx.stroke();ctx.setLineDash([]);
-  // fill + line
+  ctx.font='10px ui-monospace,monospace';
+  // y축 (총자산 USD) — 그리드 + 라벨
+  ctx.textBaseline='middle';ctx.textAlign='right';
+  for(let i=0;i<=4;i++){const v=mn+(mx-mn)*i/4, yy=y(v);
+    ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(mL,yy);ctx.lineTo(W-mR,yy);ctx.stroke();
+    ctx.fillStyle='rgba(150,200,180,.65)';ctx.fillText(usdShort(v),mL-6,yy);}
+  // 초기자본 기준선
+  ctx.strokeStyle='rgba(255,255,255,.2)';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(mL,y(cap));ctx.lineTo(W-mR,y(cap));ctx.stroke();ctx.setLineDash([]);
+  // x축 (날짜) 라벨
+  ctx.textBaseline='top';ctx.fillStyle='rgba(150,200,180,.65)';
+  for(let i=0;i<=4;i++){const idx=Math.round((cur.length-1)*i/4), xx=x(idx);
+    ctx.textAlign=i===0?'left':(i===4?'right':'center');ctx.fillText(dateShort(cur[idx][0]),xx,H-mB+5);}
+  // 축 단위 라벨
+  ctx.save();ctx.translate(11,mT+ph/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='rgba(150,200,180,.5)';ctx.fillText('총자산 USD',0,0);ctx.restore();
+  // 영역 + 라인
   const last=cur[cur.length-1][1], col=last>=cap?'0,255,157':'255,92,92';
-  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,`rgba(${col},.28)`);g.addColorStop(1,`rgba(${col},0)`);
-  ctx.beginPath();ctx.moveTo(0,y(cur[0][1]));for(let i=1;i<cur.length;i++)ctx.lineTo(x(i),y(cur[i][1]));
-  ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();ctx.fillStyle=g;ctx.fill();
-  ctx.beginPath();ctx.moveTo(0,y(cur[0][1]));for(let i=1;i<cur.length;i++)ctx.lineTo(x(i),y(cur[i][1]));
+  const g=ctx.createLinearGradient(0,mT,0,mT+ph);g.addColorStop(0,`rgba(${col},.30)`);g.addColorStop(1,`rgba(${col},0)`);
+  ctx.beginPath();ctx.moveTo(x(0),y(cur[0][1]));for(let i=1;i<cur.length;i++)ctx.lineTo(x(i),y(cur[i][1]));
+  ctx.lineTo(x(cur.length-1),mT+ph);ctx.lineTo(x(0),mT+ph);ctx.closePath();ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();ctx.moveTo(x(0),y(cur[0][1]));for(let i=1;i<cur.length;i++)ctx.lineTo(x(i),y(cur[i][1]));
   ctx.strokeStyle=`rgb(${col})`;ctx.lineWidth=2;ctx.stroke();
 }
 
@@ -1783,7 +1799,7 @@ function playOnboarding(){
 
 /* ---------- 컨트롤 ---------- */
 function stopAuto(){if(auto){clearInterval(auto);auto=null;$('autoBtn').textContent='자동재생';}}
-function startAuto(){if(auto||playing||(S&&S.done))return;$('autoBtn').textContent='⏸ 정지';auto=setInterval(step,300);}
+function startAuto(){if(auto||playing||(S&&S.done))return;$('autoBtn').textContent='⏸ 정지';auto=setInterval(step,1000);}
 $('runBtn').onclick=()=>{try{stopAuto();localStorage.removeItem(KEY);S=fresh(buildConfig());showSim();boot();}catch(err){alert('구동 오류: '+err.message);console.error(err);}};
 $('nextBtn').onclick=()=>{if(playing)return;stopAuto();step();};
 $('skip20').onclick=()=>{if(playing)return;stopAuto();for(let i=0;i<20&&!S.done;i++)step();};
